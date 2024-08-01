@@ -1,0 +1,5 @@
+fastapi 
+pydantic 
+langchain 
+requests 
+python-dotenv
