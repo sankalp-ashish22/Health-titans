@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from enum import Enum
@@ -14,6 +13,13 @@ from langchain.prompts import (
     ChatPromptTemplate,
 )
 from langchain.tools.render import render_text_description
+
+# Load environment variables
+load_dotenv()
+
+# Retrieve API keys from environment variables
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+FIREWORKS_API_KEY = os.getenv("FIREWORKS_API_KEY")
 
 class MenstrualPhase(str, Enum):
     menstrual = "Menstrual Phase (Day 1 to Day 7)"
@@ -39,16 +45,12 @@ app = FastAPI()
 def periodcarerecommender(input_text):
     api_wrapper = WikipediaAPIWrapper(top_k_results=1, doc_content_chars_max=300)
     wiki = WikipediaQueryRun(api_wrapper=api_wrapper)
-    search = TavilySearchAPIWrapper(tavily_api_key="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")
+    search = TavilySearchAPIWrapper(tavily_api_key=TAVILY_API_KEY)
     tavily = TavilySearchResults(api_wrapper=search)
     pubmed = PubmedQueryRun()
     tools = [pubmed, wiki, tavily]
     
-    load_dotenv()
-    
-    apikey = "7VFbsxBYrzLeNOm45rIOtYr7gAjETI3vRFhlQs5DRToyX9pG"
-   
-    llm = ChatFireworks(model="accounts/fireworks/models/mixtral-8x7b-instruct", api_key=apikey, max_tokens=300)
+    llm = ChatFireworks(model="accounts/fireworks/models/mixtral-8x7b-instruct", api_key=FIREWORKS_API_KEY, max_tokens=300)
     rendered_tools = render_text_description(tools)
 
     prompt_template = f"""
@@ -104,4 +106,3 @@ async def get_suggestions(user_query: UserQuery):
     
     suggestion = periodcarerecommender(user_question)
     return {"suggestion": suggestion}
-
