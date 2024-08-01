@@ -1,6 +1,7 @@
-fastapi 
-pydantic 
-langchain 
-requests 
+fastapi
+pydantic
 python-dotenv
+langchain
+langchain_community
+langchain_fireworks
 uvicorn
