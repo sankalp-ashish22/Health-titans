@@ -1,106 +1,107 @@
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from enum import Enum
 from langchain_community.tools import WikipediaQueryRun
 from langchain_community.utilities import WikipediaAPIWrapper
 from langchain.utilities.tavily_search import TavilySearchAPIWrapper
 from langchain_community.tools.pubmed.tool import PubmedQueryRun
-from langchain.prompts import ChatPromptTemplate
-from langchain.tools.render import render_text_description
 from dotenv import load_dotenv
 import os
-import requests
+from langchain_fireworks import ChatFireworks
 from langchain_community.tools.tavily_search import TavilySearchResults
+from langchain.prompts import (
+    ChatPromptTemplate,
+)
+from langchain.tools.render import render_text_description
 
-# Load environment variables
-load_dotenv()
+class MenstrualPhase(str, Enum):
+    menstrual = "Menstrual Phase (Day 1 to Day 7)"
+    proliferative = "Proliferative Phase (Day 8 to Day 11)"
+    ovulation = "Ovulation Phase (Day 12 to 17)"
+    luteal = "Luteal Phase (Day 18 to Day 28)"
 
-# Define input model
-class PeriodCareInput(BaseModel):
-    user_phase: str
-    user_day: int = None
-    abdominal_pain: bool
-    period_flow: bool
-    period_flow_type: str = None
-    additional_issues: str = None
+class PeriodFlowType(str, Enum):
+    heavy = "Heavy"
+    moderate = "Moderate"
+    low = "Low"
 
-# Initialize FastAPI app
+class UserQuery(BaseModel):
+    phase: MenstrualPhase
+    day: int = Field(None, ge=1, le=7)
+    abdominal_pain: bool = False
+    period_flow: bool = False
+    period_flow_type: PeriodFlowType = None
+    additional_query: str = None
+
 app = FastAPI()
 
-# Initialize API wrappers and models
-api_wrapper = WikipediaAPIWrapper(top_k_results=1, doc_content_chars_max=300)
-wiki = WikipediaQueryRun(api_wrapper=api_wrapper)
-search = TavilySearchAPIWrapper(tavily_api_key="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")
-tavily = TavilySearchResults(api_wrapper=search)
-pubmed = PubmedQueryRun()
-tools = [pubmed, wiki, tavily]
+def periodcarerecommender(input_text):
+    api_wrapper = WikipediaAPIWrapper(top_k_results=1, doc_content_chars_max=300)
+    wiki = WikipediaQueryRun(api_wrapper=api_wrapper)
+    search = TavilySearchAPIWrapper(tavily_api_key="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")
+    tavily = TavilySearchResults(api_wrapper=search)
+    pubmed = PubmedQueryRun()
+    tools = [pubmed, wiki, tavily]
+    
+    load_dotenv()
+    
+    apikey = "7VFbsxBYrzLeNOm45rIOtYr7gAjETI3vRFhlQs5DRToyX9pG"
+   
+    llm = ChatFireworks(model="accounts/fireworks/models/mixtral-8x7b-instruct", api_key=apikey, max_tokens=300)
+    rendered_tools = render_text_description(tools)
 
-gemini_api_key = os.environ['gemini_api_key']
-rendered_tools = render_text_description(tools)
-
-prompt_template = f""" Your name is Titans. You are a medical practitioner and specialize on questions
-        regarding female menstrual health, periods, symptoms related to it, its solutions, 
-        diseases related to it, and myths related to it. Answer the question as detailed as possible 
+    prompt_template = f"""
+        Your name is Maitri. You are a medical practitioner and specialize in questions
+        regarding female menstrual health, periods, symptoms related to it, its solutions,
+        diseases related to it and myths related to it. Answer the question as detailed as possible 
         from the given sources, make sure to provide all the details, don't provide the wrong answer to 
-        things you do not know and you should not entertain any questions that are not related to female menstruation 
-        , periods, symptoms related to it, its solutions, diseases related to it, and myths related to it.\n\n 
+        things you do not know and you should not entertain any questions that are not related to female menstruation,
+        periods, symptoms related to it, its solutions, diseases related to it and myths related to it.
+
         Make sure to use only the wiki pubmed tool for information and no other sources strictly.
-        Do not provide articles link but you can tell the sources wherever needed. Give a care routine during the phases of the menstrual cycle. Strictly Summarize your answers in 150 tokens.
+        Do not provide article links but you can tell the sources wherever needed. Give a care routine during the phases of the menstrual cycle. Strictly summarize your answers in 150 tokens.
+
         Here are the names and descriptions for each tool:
 
-{rendered_tools}
-"""
+        {rendered_tools}
+    """
+   
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", prompt_template),
+            ("user", "{input}")
+        ]
+    )
 
-prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", prompt_template),
-        ("user", "{input}")
-    ]
-)
+    chain = prompt | llm 
+    answer = chain.invoke({"input": input_text})
+    return answer.content
 
-# Function to generate response using Gemini API
-def generate_response_gemini(prompt):
-    headers = {
-        "Authorization": f"Bearer {gemini_api_key}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "model": "gemini-pro",
-        "prompt": prompt,
-        "max_tokens": 300,
-        "temperature": 0.1,
-    }
-    response = requests.post("https://api.gemini.com/v1/completions", headers=headers, json=data)
-    if response.status_code == 200:
-        return response.json().get("choices", [])[0].get("text", "")
+@app.get("/phases")
+async def get_phases():
+    phases = [phase.value for phase in MenstrualPhase]
+    return {"phases": phases}
+
+@app.get("/period_flow_types")
+async def get_period_flow_types():
+    period_flow_types = [flow_type.value for flow_type in PeriodFlowType]
+    return {"period_flow_types": period_flow_types}
+
+@app.post("/get_suggestions")
+async def get_suggestions(user_query: UserQuery):
+    if user_query.phase == MenstrualPhase.menstrual:
+        if user_query.day is None:
+            raise HTTPException(status_code=400, detail="Day is required for the Menstrual Phase")
+        period_flow_type = user_query.period_flow_type.value if user_query.period_flow else 'None'
+        user_question = f"I'm in the Menstrual Phase, Day {user_query.day}. Abdominal pain: {'Yes' if user_query.abdominal_pain else 'No'}, Period flow: {period_flow_type}. Suggest me how should I take care of myself"
+        if user_query.additional_query:
+            user_question += f" {user_query.additional_query}"
     else:
-        raise HTTPException(status_code=response.status_code, detail=response.text)
+        user_question = f"I am in the {user_query.phase}. Suggest me how should I take care of myself based on the {user_query.phase}"
+        if user_query.additional_query:
+            user_question += f" {user_query.additional_query}"
+    
+    suggestion = periodcarerecommender(user_question)
+    return {"suggestion": suggestion}
 
-# Define the recommendation function
-def period_care_recommender(input_data: PeriodCareInput):
-    if input_data.user_phase == "Menstrual Phase (Day 1 to Day 7)":
-        user_question = f"I'm in the Menstrual Phase, Day {input_data.user_day}. Abdominal pain: {'Yes' if input_data.abdominal_pain else 'No'}, Period flow: {input_data.period_flow_type if input_data.period_flow else 'None'}. Suggest me how should I take care of myself"
-    else:
-        user_question = f'I am in the {input_data.user_phase}. Suggest me how should I take care of myself based on the {input_data.user_phase}'
-
-    if input_data.additional_issues:
-        user_question += f" {input_data.additional_issues}"
-
-    chain = prompt | (lambda input: generate_response_gemini(input))
-    answer = chain.invoke({"input": user_question})
-    print(answer)
-    return answer
-
-# Define the endpoint
-@app.post("/recommendation")
-async def get_recommendation(input_data: PeriodCareInput):
-    try:
-        result = period_care_recommender(input_data)
-        return {"recommendation": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Main function (unnecessary in FastAPI as it uses ASGI server)
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
