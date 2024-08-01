@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from enum import Enum
 from langchain_community.tools import WikipediaQueryRun
 from langchain_community.utilities import WikipediaAPIWrapper
-from langchain.utilities.tavily_search import TavilySearchAPIWrapper
+from langchain_community.utilities.tavily_search import TavilySearchAPIWrapper
 from langchain_community.tools.pubmed.tool import PubmedQueryRun
 from dotenv import load_dotenv
 import os
