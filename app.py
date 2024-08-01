@@ -34,7 +34,7 @@ class PeriodFlowType(str, Enum):
 
 class UserQuery(BaseModel):
     phase: MenstrualPhase
-    day: int = Field(None, ge=1, le=7)
+    day: int = Field(None, ge=1, le=28)
     abdominal_pain: bool = False
     period_flow: bool = False
     period_flow_type: PeriodFlowType = None
@@ -96,6 +96,8 @@ async def get_suggestions(user_query: UserQuery):
         if user_query.day is None:
             raise HTTPException(status_code=400, detail="Day is required for the Menstrual Phase")
         period_flow_type = user_query.period_flow_type.value if user_query.period_flow else 'None'
+        if user_query.day > 7 or user_query.day<0:
+            return HTTPException(status_code=422, detail="Day should be between 0 and 7 for this phase")
         user_question = f"I'm in the Menstrual Phase, Day {user_query.day}. Abdominal pain: {'Yes' if user_query.abdominal_pain else 'No'}, Period flow: {period_flow_type}. Suggest me how should I take care of myself"
         if user_query.additional_query:
             user_question += f" {user_query.additional_query}"
