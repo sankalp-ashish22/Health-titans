@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from enum import Enum
@@ -12,15 +13,8 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain.prompts import (
     ChatPromptTemplate,
 )
-from fastapi.middleware.cors import CORSMiddleware  
 from langchain.tools.render import render_text_description
-
-# Load environment variables
-load_dotenv()
-
-# Retrieve API keys from environment variables
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
-FIREWORKS_API_KEY = os.getenv("FIREWORKS_API_KEY")
+from fastapi.middleware.cors import CORSMiddleware
 
 class MenstrualPhase(str, Enum):
     menstrual = "Menstrual Phase (Day 1 to Day 7)"
@@ -35,7 +29,7 @@ class PeriodFlowType(str, Enum):
 
 class UserQuery(BaseModel):
     phase: MenstrualPhase
-    day: int = Field(None, ge=1, le=28)
+    day: int = Field(None, ge=1, le=7)
     abdominal_pain: bool = False
     period_flow: bool = False
     period_flow_type: PeriodFlowType = None
@@ -49,17 +43,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
 def periodcarerecommender(input_text):
     api_wrapper = WikipediaAPIWrapper(top_k_results=1, doc_content_chars_max=300)
     wiki = WikipediaQueryRun(api_wrapper=api_wrapper)
-    search = TavilySearchAPIWrapper(tavily_api_key=TAVILY_API_KEY)
+    search = TavilySearchAPIWrapper(tavily_api_key="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")
     tavily = TavilySearchResults(api_wrapper=search)
     pubmed = PubmedQueryRun()
     tools = [pubmed, wiki, tavily]
     
-    llm = ChatFireworks(model="accounts/fireworks/models/mixtral-8x7b-instruct", api_key=FIREWORKS_API_KEY, max_tokens=300)
+    load_dotenv()
+    
+    apikey = "7VFbsxBYrzLeNOm45rIOtYr7gAjETI3vRFhlQs5DRToyX9pG"
+   
+    llm = ChatFireworks(model="accounts/fireworks/models/mixtral-8x7b-instruct", api_key=apikey, max_tokens=300)
     rendered_tools = render_text_description(tools)
 
     prompt_template = f"""
@@ -105,8 +101,6 @@ async def get_suggestions(user_query: UserQuery):
         if user_query.day is None:
             raise HTTPException(status_code=400, detail="Day is required for the Menstrual Phase")
         period_flow_type = user_query.period_flow_type.value if user_query.period_flow else 'None'
-        if user_query.day > 7 or user_query.day<0:
-            return HTTPException(status_code=422, detail="Day should be between 0 and 7 for this phase")
         user_question = f"I'm in the Menstrual Phase, Day {user_query.day}. Abdominal pain: {'Yes' if user_query.abdominal_pain else 'No'}, Period flow: {period_flow_type}. Suggest me how should I take care of myself"
         if user_query.additional_query:
             user_question += f" {user_query.additional_query}"
@@ -117,9 +111,6 @@ async def get_suggestions(user_query: UserQuery):
     
     suggestion = periodcarerecommender(user_question)
     return {"suggestion": suggestion}
-
-
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=8000)
-
+    uvicorn.run(app=app, port=8000)
