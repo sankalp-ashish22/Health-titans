@@ -12,6 +12,7 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain.prompts import (
     ChatPromptTemplate,
 )
+from fastapi.middleware.cors import CORSMiddleware  
 from langchain.tools.render import render_text_description
 
 # Load environment variables
