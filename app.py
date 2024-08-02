@@ -41,6 +41,14 @@ class UserQuery(BaseModel):
     additional_query: str = None
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Set this to the appropriate origin or origins
+    allow_credentials=True, 
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 def periodcarerecommender(input_text):
     api_wrapper = WikipediaAPIWrapper(top_k_results=1, doc_content_chars_max=300)
